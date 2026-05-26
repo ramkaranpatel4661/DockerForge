@@ -5,10 +5,8 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 async function generateDockerfile(fileTree, dependencyFile) {
     try {
-        // Hum yahan gemini-1.5-flash use kar rahe hain kyunki ye coding tasks aur speed dono me best hai
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-
-        // AI ko humara context aur rules samjhana
+        // Hum yahan gemini pro use kar rahe hain kyunki ye coding tasks aur speed dono me best hai
+        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
         const prompt = `
         You are an expert DevOps AI. Your task is to write a highly optimized, production-ready Dockerfile for a project.
         

@@ -5,6 +5,7 @@ function App() {
   const [repoUrl, setRepoUrl] = useState('');
   const [status, setStatus] = useState('');
   const [loading, setLoading] = useState(false);
+  const [dockerfile, setDockerfile] = useState(''); // Naya state Dockerfile ke liye
 
   const handleGenerate = async () => {
     if (!repoUrl) {
@@ -13,10 +14,10 @@ function App() {
     }
 
     setLoading(true);
-    setStatus('Cloning repository and scanning files... Please wait.');
+    setStatus('Cloning repo, analyzing, and generating Dockerfile using AI... Please wait.');
+    setDockerfile(''); // Purani file clear kar rahe hain
 
     try {
-      // Backend ko POST request bhej rahe hain
       const response = await fetch('http://localhost:3000/api/generate', {
         method: 'POST',
         headers: {
@@ -28,9 +29,8 @@ function App() {
       const data = await response.json();
 
       if (response.ok) {
-        setStatus('Success! Repository cloned successfully.');
-        console.log("Extracted File Tree from Backend:", data.files);
-        alert('Check the Browser Console (F12) to see the file structure!');
+        setStatus('Success! AI generated the Dockerfile.');
+        setDockerfile(data.dockerfile); // State me Dockerfile set kar di
       } else {
         setStatus('Error: ' + data.error);
       }
@@ -73,8 +73,26 @@ function App() {
       </div>
 
       {status && (
-        <div style={{ marginTop: '30px', fontSize: '18px', fontWeight: 'bold', color: status.includes('Error') ? 'red' : 'green' }}>
+        <div style={{ marginTop: '20px', fontSize: '18px', fontWeight: 'bold', color: status.includes('Error') ? 'red' : 'green' }}>
           {status}
+        </div>
+      )}
+
+      {/* Ye naya section hai generated Dockerfile ko display karne ke liye */}
+      {dockerfile && (
+        <div style={{ marginTop: '30px', textAlign: 'left', display: 'inline-block', width: '80%', maxWidth: '800px' }}>
+          <h3>Generated Dockerfile:</h3>
+          <pre style={{
+            backgroundColor: '#1e1e1e',
+            color: '#d4d4d4',
+            padding: '20px',
+            borderRadius: '8px',
+            overflowX: 'auto',
+            fontSize: '14px',
+            lineHeight: '1.5'
+          }}>
+            <code>{dockerfile}</code>
+          </pre>
         </div>
       )}
     </div>

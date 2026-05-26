@@ -24,7 +24,7 @@ async function cloneRepository(repoUrl, targetDir) {
 }
 
 // Function 2: Repo ka file structure nikalna (LLM ko bhejne ke liye)
-function getFileTree(dir, fileList = []) {
+function getFileTree(dir, fileList = [], baseDir = dir) {
     const files = fs.readdirSync(dir);
 
     files.forEach(file => {
@@ -32,11 +32,12 @@ function getFileTree(dir, fileList = []) {
         if (fs.statSync(filePath).isDirectory()) {
             // .git aur node_modules ignore karna zaroori hai
             if (file !== 'node_modules' && file !== '.git') {
-                getFileTree(filePath, fileList);
+                getFileTree(filePath, fileList, baseDir);
             }
         } else {
-            // Hum paths save kar rahe hain
-            fileList.push(filePath.replace(dir, ''));
+            // Get path relative to the base directory and normalize slashes to '/'
+            const relativePath = path.relative(baseDir, filePath);
+            fileList.push(relativePath.replace(/\\/g, '/'));
         }
     });
 

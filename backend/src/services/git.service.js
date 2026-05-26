@@ -43,7 +43,24 @@ function getFileTree(dir, fileList = []) {
     return fileList;
 }
 
+// Function 3: Important files (jaise package.json) ka content read karna
+function getDependencyFileContent(targetDir) {
+    const filesToLookFor = ['package.json', 'requirements.txt', 'pom.xml', 'go.mod'];
+
+    for (const file of filesToLookFor) {
+        const fullPath = path.join(targetDir, file);
+        if (fs.existsSync(fullPath)) {
+            return {
+                filename: file,
+                content: fs.readFileSync(fullPath, 'utf-8')
+            };
+        }
+    }
+    return null; // Agar koi dependency file nahi mili
+}
+
 module.exports = {
     cloneRepository,
-    getFileTree
+    getFileTree,
+    getDependencyFileContent
 };

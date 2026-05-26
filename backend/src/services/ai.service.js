@@ -35,4 +35,38 @@ async function generateDockerfile(fileTree, dependencyFile) {
     }
 }
 
-module.exports = { generateDockerfile };
+
+// Function 2: Error aane par Dockerfile ko auto-fix karna
+async function fixDockerfile(currentDockerfile, errorMessage) {
+    try {
+        // Humne abhi 2.5-flash par fix kiya tha, toh wahi use karenge
+        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+
+        const prompt = `
+        You are an expert DevOps AI. I tried to build a Docker image using the following Dockerfile, but it failed.
+        
+        Here is the current Dockerfile:
+        ${currentDockerfile}
+        
+        Here is the build error message from the terminal:
+        ${errorMessage}
+        
+        Please analyze the error and fix the Dockerfile.
+        IMPORTANT RULES:
+        1. Return ONLY the raw fixed Dockerfile content.
+        2. DO NOT include any explanations or apologies.
+        3. DO NOT wrap the output in markdown code blocks like \`\`\`docker or \`\`\`. Just return the plain text.
+        `;
+
+        const result = await model.generateContent(prompt);
+        let fixedDockerfile = result.response.text();
+
+        // Remove accidental markdown
+        fixedDockerfile = fixedDockerfile.replace(/```docker\n?/gi, '').replace(/```\n?/g, '').trim();
+        return fixedDockerfile;
+    } catch (error) {
+        console.error("AI Fix Error:", error);
+        throw new Error("Failed to fix Dockerfile using AI");
+    }
+}
+module.exports = { generateDockerfile, fixDockerfile };

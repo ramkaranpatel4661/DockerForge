@@ -4,38 +4,44 @@ const path = require('path');
 
 const git = simpleGit();
 
-// Function 1: Repository ko temporary folder me clone karna
+/**
+ * Clones a public GitHub repository into the specified target directory.
+ * If the target directory already exists, it is deleted first to ensure a clean clone.
+ */
 async function cloneRepository(repoUrl, targetDir) {
     try {
         console.log(`Cloning ${repoUrl} into ${targetDir}...`);
 
-        // Agar pehle se koi temp folder hai toh use delete kar do
+        // Remove any existing temp directory before cloning to avoid conflicts
         if (fs.existsSync(targetDir)) {
             fs.rmSync(targetDir, { recursive: true, force: true });
         }
 
         await git.clone(repoUrl, targetDir);
-        console.log('Cloning successful!');
+        console.log('Clone successful!');
         return true;
     } catch (error) {
         console.error('Error cloning repository:', error);
-        throw new Error('Failed to clone repository');
+        throw new Error('Failed to clone repository. Ensure the URL is public and valid.');
     }
 }
 
-// Function 2: Repo ka file structure nikalna (LLM ko bhejne ke liye)
+/**
+ * Recursively walks a directory and returns a flat list of relative file paths.
+ * Ignores node_modules and .git directories to keep the context clean for the LLM.
+ */
 function getFileTree(dir, fileList = [], baseDir = dir) {
     const files = fs.readdirSync(dir);
 
     files.forEach(file => {
         const filePath = path.join(dir, file);
         if (fs.statSync(filePath).isDirectory()) {
-            // .git aur node_modules ignore karna zaroori hai
-            if (file !== 'node_modules' && file !== '.git') {
+            // Skip dependency/version-control directories to reduce noise
+            if (file !== 'node_modules' && file !== '.git' && file !== '__pycache__' && file !== '.venv') {
                 getFileTree(filePath, fileList, baseDir);
             }
         } else {
-            // Get path relative to the base directory and normalize slashes to '/'
+            // Normalize Windows backslashes to forward slashes for cross-platform compatibility
             const relativePath = path.relative(baseDir, filePath);
             fileList.push(relativePath.replace(/\\/g, '/'));
         }
@@ -44,20 +50,39 @@ function getFileTree(dir, fileList = [], baseDir = dir) {
     return fileList;
 }
 
-// Function 3: Important files (jaise package.json) ka content read karna
+/**
+ * Locates and reads the primary dependency manifest file from the repository.
+ * Searches both the root and common subdirectories (e.g., backend/, app/) for monorepos.
+ * Supports: package.json, requirements.txt, pom.xml, go.mod, Pipfile, pyproject.toml
+ */
 function getDependencyFileContent(targetDir) {
-    const filesToLookFor = ['package.json', 'requirements.txt', 'pom.xml', 'go.mod'];
+    const filesToLookFor = [
+        'package.json',
+        'requirements.txt',
+        'pom.xml',
+        'go.mod',
+        'Pipfile',
+        'pyproject.toml'
+    ];
 
-    for (const file of filesToLookFor) {
-        const fullPath = path.join(targetDir, file);
-        if (fs.existsSync(fullPath)) {
-            return {
-                filename: file,
-                content: fs.readFileSync(fullPath, 'utf-8')
-            };
+    // Common subdirectory patterns found in monorepos
+    const subdirsToCheck = ['', 'backend', 'app', 'server', 'api', 'src'];
+
+    for (const subdir of subdirsToCheck) {
+        for (const file of filesToLookFor) {
+            const fullPath = path.join(targetDir, subdir, file);
+            if (fs.existsSync(fullPath)) {
+                console.log(`Found dependency file: ${path.join(subdir, file)}`);
+                return {
+                    filename: subdir ? `${subdir}/${file}` : file,
+                    content: fs.readFileSync(fullPath, 'utf-8')
+                };
+            }
         }
     }
-    return null; // Agar koi dependency file nahi mili
+
+    console.warn('No recognized dependency file found in root or common subdirectories.');
+    return null;
 }
 
 module.exports = {

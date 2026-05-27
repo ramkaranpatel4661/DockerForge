@@ -1,14 +1,14 @@
 {
-  "name": "backend",
+  "name": "dockerforge-backend",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "DockerForge backend — agentic AI service that clones GitHub repositories, generates optimized Dockerfiles using Gemini, and self-repairs them through iterative Docker build/run validation loops.",
+  "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon --ignore temp-repo/ src/server.js"
   },
-  "keywords": [],
-  "author": "",
+  "keywords": ["docker", "ai", "gemini", "devops", "dockerfile-generator", "agentic"],
+  "author": "Ramkaran Patel",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {

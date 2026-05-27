@@ -2,105 +2,130 @@ const { exec } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
-// Function 1: Generated Dockerfile ko temp folder me save karna
+// Maximum time (ms) to allow a Docker build before timing out (5 minutes)
+const BUILD_TIMEOUT_MS = 5 * 60 * 1000;
+
+/**
+ * Writes the generated Dockerfile content to disk inside the target directory.
+ */
 function saveDockerfile(targetDir, dockerfileContent) {
     const filePath = path.join(targetDir, 'Dockerfile');
     fs.writeFileSync(filePath, dockerfileContent, 'utf-8');
-    console.log('Dockerfile saved to repository directory.');
+    console.log(`Dockerfile saved to: ${filePath}`);
 }
 
-// Function 2: Docker Image Build karna
+/**
+ * Runs `docker build` against the target directory and captures stdout/stderr.
+ * Resolves with { success, log } on success or { success, errorLog } on failure.
+ * Applies a build timeout to prevent indefinite hangs on large repositories.
+ */
 function buildImage(targetDir, imageName = 'dockerforge-temp') {
     return new Promise((resolve, reject) => {
-        console.log(`Starting Docker build for ${imageName}...`);
+        console.log(`Starting Docker build: image="${imageName}", context="${targetDir}"`);
 
-        // Node.js se bash command chala rahe hain
-        exec(`docker build -t ${imageName} .`, { cwd: targetDir }, (error, stdout, stderr) => {
-            if (error) {
-                console.error(`Build Failed.`);
-                // Docker stderr me errors bhejta hai, hum wahi capture karenge AI ko dikhane ke liye
-                return resolve({ success: false, errorLog: stderr || error.message });
+        exec(
+            `docker build -t ${imageName} .`,
+            { cwd: targetDir, timeout: BUILD_TIMEOUT_MS },
+            (error, stdout, stderr) => {
+                if (error) {
+                    // Check for timeout specifically
+                    if (error.killed) {
+                        console.error('Docker build timed out after 5 minutes.');
+                        return resolve({ success: false, errorLog: 'Docker build timed out. The repository may be too large or contain a very long build step.' });
+                    }
+                    console.error('Docker build failed.');
+                    // Docker writes build errors to stderr; capture it for AI self-repair
+                    return resolve({ success: false, errorLog: stderr || error.message });
+                }
+                console.log('Docker build succeeded.');
+                resolve({ success: true, log: stdout });
             }
-            console.log(`Build Successful!`);
-            resolve({ success: true, log: stdout });
-        });
+        );
     });
 }
 
-// Function 3: Check if Docker daemon is running
+/**
+ * Checks whether the Docker daemon is currently reachable.
+ * Uses a short timeout (3s) to avoid hanging if the socket is unresponsive.
+ */
 function isDockerRunning() {
     return new Promise((resolve) => {
-        // Use a 3-second timeout so it doesn't hang if there are system socket issues
         exec('docker info', { timeout: 3000 }, (error) => {
-            if (error) {
-                resolve(false);
-            } else {
-                resolve(true);
-            }
+            resolve(!error);
         });
     });
 }
 
-// Function 4: Check if an error log indicates a Docker daemon connection issue
+/**
+ * Detects whether an error log string indicates a Docker daemon connectivity issue
+ * (as opposed to a Dockerfile syntax/logic error that the AI can fix).
+ */
 function isDockerDaemonError(errorLog) {
     if (!errorLog) return false;
     const errorLower = errorLog.toLowerCase();
-    return errorLower.includes("error during connect") ||
-        errorLower.includes("cannot connect to the docker daemon") ||
-        errorLower.includes("is the docker daemon running") ||
-        errorLower.includes("docker daemon is not running") ||
-        errorLower.includes("open //./pipe/") ||
-        errorLower.includes("/var/run/docker.sock") ||
-        errorLower.includes("the system cannot find the file specified");
+    return (
+        errorLower.includes('error during connect') ||
+        errorLower.includes('cannot connect to the docker daemon') ||
+        errorLower.includes('is the docker daemon running') ||
+        errorLower.includes('docker daemon is not running') ||
+        errorLower.includes('open //./pipe/') ||
+        errorLower.includes('/var/run/docker.sock') ||
+        errorLower.includes('the system cannot find the file specified')
+    );
 }
 
-// Function 5: Run the built image and verify it starts and responds
+/**
+ * Runs the built Docker image in detached mode (-d) with all ports auto-mapped (-P),
+ * then verifies it remains in a running state after a startup grace period.
+ * If the container exposes a port, attempts an HTTP ping to confirm the service responds.
+ * Cleans up the container after verification regardless of outcome.
+ */
 function runAndVerifyContainer(imageName = 'dockerforge-temp') {
     return new Promise((resolve) => {
         const containerName = `dockerforge-verify-${Date.now()}`;
-        console.log(`Starting container verification for ${imageName}...`);
+        console.log(`Starting container verification: image="${imageName}", name="${containerName}"`);
 
-        // Run container in background mapping all exposed ports to random host ports (-P)
         exec(`docker run -d -P --name ${containerName} ${imageName}`, async (error, stdout, stderr) => {
             if (error) {
-                console.error(`Failed to start container:`, error.message);
+                console.error('Failed to start container:', error.message);
                 return resolve({ success: false, errorLog: stderr || error.message });
             }
 
             const containerId = stdout.trim();
-            console.log(`Container started in background. ID: ${containerId}`);
+            console.log(`Container started in background. Container ID: ${containerId.slice(0, 12)}`);
 
-            // Wait 4 seconds for container to initialize
+            // Allow time for services inside the container to initialize
             await new Promise(r => setTimeout(r, 4000));
 
-            // 1. Verify container is still running
+            // Step 1: Verify the container is still in the Running state
             exec(`docker inspect --format="{{.State.Running}}" ${containerId}`, (inspectError, inspectStdout) => {
-                if (inspectError || inspectStdout.trim() !== "true") {
-                    console.error("Verification failed: Container is not running.");
+                if (inspectError || inspectStdout.trim() !== 'true') {
+                    console.error('Verification failed: Container exited prematurely.');
 
-                    // Retrieve logs to understand why it failed/crashed
+                    // Retrieve container logs to understand the crash reason for AI self-repair
                     exec(`docker logs ${containerId}`, (logsError, logsStdout, logsStderr) => {
-                        const logs = logsStdout || logsStderr || "No startup logs available.";
-                        console.error(`Container crashed. Logs:\n${logs}`);
-
-                        // Clean up the dead container
+                        const logs = logsStdout || logsStderr || 'No startup logs available.';
+                        console.error(`Container crash logs:\n${logs}`);
                         exec(`docker rm -f ${containerId}`);
-                        resolve({ success: false, errorLog: `Container crashed on startup.\nLogs:\n${logs}` });
+                        resolve({
+                            success: false,
+                            errorLog: `Container crashed on startup.\nCrash Logs:\n${logs}`
+                        });
                     });
                     return;
                 }
 
-                // 2. Retrieve host port mapping
+                // Step 2: Inspect port bindings to determine if there is a service to ping
                 exec(`docker inspect --format="{{json .NetworkSettings.Ports}}" ${containerId}`, async (portError, portStdout) => {
                     let portResponds = false;
-                    let responseMsg = "Container started and remained in running state.";
+                    let responseMsg = 'Container started and is in a healthy running state.';
 
                     if (!portError && portStdout) {
                         try {
                             const ports = JSON.parse(portStdout.trim());
                             let mappedPort = null;
 
-                            // Find the first mapped host port
+                            // Find the first host-mapped port
                             for (const key in ports) {
                                 const bindings = ports[key];
                                 if (bindings && bindings.length > 0) {
@@ -110,43 +135,41 @@ function runAndVerifyContainer(imageName = 'dockerforge-temp') {
                             }
 
                             if (mappedPort) {
-                                console.log(`Container exposed port mapped to host port ${mappedPort}. Sending HTTP verification ping...`);
+                                console.log(`Container port mapped to host port ${mappedPort}. Sending HTTP verification ping...`);
 
-                                // Try checking the port up to 3 times (polling)
+                                // Attempt up to 3 HTTP pings with 1-second gaps between retries
                                 for (let i = 1; i <= 3; i++) {
                                     try {
-                                        const res = await Promise.race([
+                                        const ok = await Promise.race([
                                             fetch(`http://localhost:${mappedPort}`).then(r => r.ok || r.status < 500),
-                                            new Promise((_, r) => setTimeout(() => r(new Error("Timeout")), 1500))
+                                            new Promise((_, rej) => setTimeout(() => rej(new Error('Timeout')), 1500))
                                         ]);
-                                        if (res) {
+                                        if (ok) {
                                             portResponds = true;
-                                            responseMsg = `Container started successfully, is running, and responded on mapped host port ${mappedPort}!`;
+                                            responseMsg = `Container started, is running, and responded on mapped host port ${mappedPort}.`;
                                             break;
                                         }
                                     } catch (e) {
-                                        console.log(`Verification ping attempt ${i}/3 failed: ${e.message}. Retrying in 1s...`);
+                                        console.log(`HTTP ping attempt ${i}/3 failed (${e.message}). Retrying in 1s...`);
                                         await new Promise(r => setTimeout(r, 1000));
                                     }
                                 }
 
-                                if (portResponds) {
-                                    console.log("Verification Successful: Container responded!");
-                                } else {
-                                    console.warn(`Container is running, but did not respond to pings on port ${mappedPort} (could be a non-web application or slower startup).`);
+                                if (!portResponds) {
+                                    console.warn(`Container is running but did not respond on port ${mappedPort}. This may be a non-HTTP service or a slow startup.`);
                                 }
                             } else {
-                                console.log("No exposed ports mapped to host. Verification passed as container started and is running.");
+                                console.log('No exposed ports mapped to host. Verification passed — container is running.');
                             }
                         } catch (e) {
-                            console.error("Failed to parse container port mapping:", e.message);
+                            console.error('Failed to parse container port mapping:', e.message);
                         }
                     }
 
-                    // 3. Clean up the running container
-                    console.log("Cleaning up verification container...");
+                    // Step 3: Clean up the verification container
+                    console.log('Cleaning up verification container...');
                     exec(`docker rm -f ${containerId}`, () => {
-                        console.log("Cleanup complete.");
+                        console.log('Cleanup complete.');
                         resolve({ success: true, log: responseMsg });
                     });
                 });

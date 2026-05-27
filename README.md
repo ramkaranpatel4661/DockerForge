@@ -54,7 +54,7 @@ We have Dockerized the tool itself using **Docker-out-of-Docker (DooD)**. By mou
 
 1. **Clone the DockerForge project:**
    ```bash
-   git clone <your-dockerforge-repo>
+   git clone https://github.com/ramkaranpatel4661/DockerForge
    cd DockerForge
    ```
 

@@ -4,8 +4,10 @@ import './App.css';
 function App() {
   const [repoUrl, setRepoUrl] = useState('');
   const [status, setStatus] = useState('');
+  const [statusType, setStatusType] = useState(''); // 'info', 'success', 'warning', 'error'
   const [loading, setLoading] = useState(false);
-  const [dockerfile, setDockerfile] = useState(''); // Naya state Dockerfile ke liye
+  const [dockerfile, setDockerfile] = useState('');
+  const [copied, setCopied] = useState(false);
 
   const handleGenerate = async () => {
     if (!repoUrl) {
@@ -14,8 +16,10 @@ function App() {
     }
 
     setLoading(true);
-    setStatus('Cloning repo, analyzing, and generating Dockerfile using AI... Please wait.');
-    setDockerfile(''); // Purani file clear kar rahe hain
+    setStatus('Cloning repo, analyzing repository, and generating Dockerfile using AI... Please wait.');
+    setStatusType('info');
+    setDockerfile('');
+    setCopied(false);
 
     try {
       const response = await fetch('http://localhost:3000/api/generate', {
@@ -29,69 +33,109 @@ function App() {
       const data = await response.json();
 
       if (response.ok) {
-        setStatus('Success! AI generated the Dockerfile.');
-        setDockerfile(data.dockerfile); // State me Dockerfile set kar di
+        setDockerfile(data.dockerfile);
+        if (data.buildSuccess) {
+          setStatus('Success! AI generated the Dockerfile and local Docker build succeeded.');
+          setStatusType('success');
+        } else if (data.dockerRunning === false) {
+          setStatus(data.message || 'Dockerfile generated successfully! Local build was skipped because Docker daemon is offline. Please start Docker Desktop.');
+          setStatusType('warning');
+        } else {
+          setStatus('Dockerfile generated, but local Docker build failed. AI attempted fixes. Error log: ' + (data.error || 'Build failure'));
+          setStatusType('error');
+        }
       } else {
-        setStatus('Error: ' + data.error);
+        setStatus('Error: ' + (data.error || 'Failed to generate Dockerfile.'));
+        setStatusType('error');
       }
     } catch (error) {
       setStatus('Failed to connect to the backend. Make sure the Node server is running.');
+      setStatusType('error');
       console.error(error);
     } finally {
       setLoading(false);
     }
   };
 
-  return (
-    <div style={{ padding: '50px', textAlign: 'center', fontFamily: 'Arial, sans-serif' }}>
-      <h1>🐳 DockerForge</h1>
-      <p>AI-Powered Dockerfile Generator</p>
+  const handleCopy = () => {
+    if (dockerfile) {
+      navigator.clipboard.writeText(dockerfile);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
 
-      <div style={{ marginTop: '30px', display: 'flex', justifyContent: 'center', gap: '10px' }}>
+  const renderAlert = () => {
+    if (!status) return null;
+
+    let icon = 'ℹ️';
+    let title = 'Information';
+    let className = 'alert-info';
+
+    if (statusType === 'success') {
+      icon = '✅';
+      title = 'Success';
+      className = 'alert-success';
+    } else if (statusType === 'warning') {
+      icon = '⚠️';
+      title = 'System Warning';
+      className = 'alert-warning';
+    } else if (statusType === 'error') {
+      icon = '❌';
+      title = 'Process Error';
+      className = 'alert-error';
+    }
+
+    return (
+      <div className={`alert-box ${className}`}>
+        <span className="alert-icon">{icon}</span>
+        <div className="alert-content">
+          <div className="alert-title">{title}</div>
+          <div>{status}</div>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="container">
+      <div className="title-section">
+        <h1>🐳 DockerForge</h1>
+        <p className="subtitle">AI-Powered Dockerfile Generator & Validator</p>
+      </div>
+
+      <div className="input-container">
         <input
           type="url"
-          placeholder="Paste public GitHub repository URL..."
+          className="repo-input"
+          placeholder="Paste public GitHub repository URL (e.g., https://github.com/user/repo)..."
           value={repoUrl}
           onChange={(e) => setRepoUrl(e.target.value)}
-          style={{ width: '400px', padding: '12px', fontSize: '16px', borderRadius: '5px', border: '1px solid #ccc' }}
+          disabled={loading}
         />
         <button
+          className="generate-btn"
           onClick={handleGenerate}
           disabled={loading}
-          style={{
-            padding: '12px 24px',
-            fontSize: '16px',
-            cursor: loading ? 'not-allowed' : 'pointer',
-            backgroundColor: loading ? '#ccc' : '#007bff',
-            color: 'white',
-            border: 'none',
-            borderRadius: '5px'
-          }}
         >
           {loading ? 'Processing...' : 'Generate Dockerfile'}
         </button>
       </div>
 
-      {status && (
-        <div style={{ marginTop: '20px', fontSize: '18px', fontWeight: 'bold', color: status.includes('Error') ? 'red' : 'green' }}>
-          {status}
-        </div>
-      )}
+      {renderAlert()}
 
-      {/* Ye naya section hai generated Dockerfile ko display karne ke liye */}
       {dockerfile && (
-        <div style={{ marginTop: '30px', textAlign: 'left', display: 'inline-block', width: '80%', maxWidth: '800px' }}>
-          <h3>Generated Dockerfile:</h3>
-          <pre style={{
-            backgroundColor: '#1e1e1e',
-            color: '#d4d4d4',
-            padding: '20px',
-            borderRadius: '8px',
-            overflowX: 'auto',
-            fontSize: '14px',
-            lineHeight: '1.5'
-          }}>
-            <code>{dockerfile}</code>
+        <div className="dockerfile-section">
+          <div className="dockerfile-header">
+            <h3 className="dockerfile-title">
+              🐳 Generated Dockerfile
+            </h3>
+            <button className="copy-btn" onClick={handleCopy}>
+              {copied ? '✅ Copied!' : '📋 Copy Content'}
+            </button>
+          </div>
+          <pre className="dockerfile-pre">
+            <code className="dockerfile-code">{dockerfile}</code>
           </pre>
         </div>
       )}

@@ -22,7 +22,8 @@ function App() {
     setCopied(false);
 
     try {
-      const response = await fetch('http://localhost:3000/api/generate', {
+      const apiHost = window.location.origin.includes('localhost:5173') ? 'http://localhost:3000' : '';
+      const response = await fetch(`${apiHost}/api/generate`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -100,7 +101,10 @@ function App() {
   return (
     <div className="container">
       <div className="title-section">
-        <h1>🐳 DockerForge</h1>
+        <h1>
+          <span className="logo-emoji">🐳</span>{' '}
+          <span className="gradient-text">DockerForge</span>
+        </h1>
         <p className="subtitle">AI-Powered Dockerfile Generator & Validator</p>
       </div>
 

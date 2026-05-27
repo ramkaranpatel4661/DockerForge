@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  dockerforge:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: dockerforge:latest
+    container_name: dockerforge
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      # Pass through user API Key from the host environment
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-flash-latest}
+    volumes:
+      # Docker-out-of-Docker (DooD) volume mount to allow the containerized
+      # app to execute docker build and docker run on the host system.
+      - /var/run/docker.sock:/var/run/docker.sock

@@ -58,18 +58,34 @@ We have Dockerized the tool itself using **Docker-out-of-Docker (DooD)**. By mou
    cd DockerForge
    ```
 
-2. **Configure Environment Variables:**
-   Create a `.env` file at the project root:
-   ```env
-   GEMINI_API_KEY=your_google_gemini_api_key_here
-   GEMINI_MODEL=gemini-flash-latest
+2. **Build the Docker image:**
+   ```bash
+   docker build -t dockerforge .
    ```
 
-3. **Launch DockerForge:**
+3. **Run the container:**
    ```bash
-   docker-compose up --build
+   docker run -p 3000:3000 \
+     -e GEMINI_API_KEY=your_google_gemini_api_key_here \
+     -e GEMINI_MODEL=gemini-flash-latest \
+     -v /var/run/docker.sock:/var/run/docker.sock \
+     dockerforge
    ```
    Open your browser and navigate to **[http://localhost:3000](http://localhost:3000)**!
+
+   > **Note:** The `-v /var/run/docker.sock:/var/run/docker.sock` mount enables Docker-out-of-Docker (DooD), allowing DockerForge to build and validate images on your host machine from inside the container.
+
+#### Alternative: Using Docker Compose (even simpler)
+
+Create a `.env` file at the project root:
+```env
+GEMINI_API_KEY=your_google_gemini_api_key_here
+GEMINI_MODEL=gemini-flash-latest
+```
+Then run:
+```bash
+docker-compose up --build
+```
 
 ---
 
